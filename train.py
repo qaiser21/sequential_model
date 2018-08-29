@@ -183,7 +183,7 @@ def model(data,ix_to_char, char_to_ix,num_iterations = 35000, n_a=50,dino_names=
     parameters = str(parameters)   
     return parameters  
           
-         
+#saving the parameters to output_file.txt        
 out = model(data,ix_to_char, char_to_ix,num_iterations = 35000, n_a=50,dino_names=7, vocab_size=27)            
 outputfile = open("output_file.txt","w")
 outputfile.write(out)
