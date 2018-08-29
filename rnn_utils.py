@@ -41,16 +41,99 @@ def initialize_parameters(n_a, n_x, n_y):
     
     return parameters
 
-def rnn_step_forward(parameters, a_prev, x):
+def initialize_adam(parameters) :
+    """
+    Initializes v and s as two python dictionaries with:
+                - keys: "dW1", "db1", ..., "dWL", "dbL" 
+                - values: numpy arrays of zeros of the same shape as the corresponding gradients/parameters.
     
+    Arguments:
+    parameters -- python dictionary containing your parameters.
+                    parameters["W" + str(l)] = Wl
+                    parameters["b" + str(l)] = bl
+    
+    Returns: 
+    v -- python dictionary that will contain the exponentially weighted average of the gradient.
+                    v["dW" + str(l)] = ...
+                    v["db" + str(l)] = ...
+    s -- python dictionary that will contain the exponentially weighted average of the squared gradient.
+                    s["dW" + str(l)] = ...
+                    s["db" + str(l)] = ...
+    """
+    
+    L = len(parameters) // 2 # number of layers in the neural networks
+    v = {}
+    s = {}
+    
+    # Initialize v, s. Input: "parameters". Outputs: "v, s".
+    for l in range(L):
+        v["dW" + str(l+1)] = np.zeros(parameters["W" + str(l+1)].shape)
+        v["db" + str(l+1)] = np.zeros(parameters["b" + str(l+1)].shape)
+        s["dW" + str(l+1)] = np.zeros(parameters["W" + str(l+1)].shape)
+        s["db" + str(l+1)] = np.zeros(parameters["b" + str(l+1)].shape)
+    return v, s
+
+
+def update_parameters_with_adam(parameters, grads, v, s, t, learning_rate = 0.01,
+                                beta1 = 0.9, beta2 = 0.999,  epsilon = 1e-8):
+    """
+    Update parameters using Adam
+    
+    Arguments:
+    parameters -- python dictionary containing your parameters:
+                    parameters['W' + str(l)] = Wl
+                    parameters['b' + str(l)] = bl
+    grads -- python dictionary containing your gradients for each parameters:
+                    grads['dW' + str(l)] = dWl
+                    grads['db' + str(l)] = dbl
+    v -- Adam variable, moving average of the first gradient, python dictionary
+    s -- Adam variable, moving average of the squared gradient, python dictionary
+    learning_rate -- the learning rate, scalar.
+    beta1 -- Exponential decay hyperparameter for the first moment estimates 
+    beta2 -- Exponential decay hyperparameter for the second moment estimates 
+    epsilon -- hyperparameter preventing division by zero in Adam updates
+    Returns:
+    parameters -- python dictionary containing your updated parameters 
+    v -- Adam variable, moving average of the first gradient, python dictionary
+    s -- Adam variable, moving average of the squared gradient, python dictionary
+    """
+    
+    L = len(parameters) // 2                 # number of layers in the neural networks
+    v_corrected = {}                         # Initializing first moment estimate, python dictionary
+    s_corrected = {}                         # Initializing second moment estimate, python dictionary
+    
+    # Perform Adam update on all parameters
+    for l in range(L):
+        # Moving average of the gradients. Inputs: "v, grads, beta1". Output: "v".
+        v["dW" + str(l+1)] = beta1 * v["dW" + str(l+1)] + (1 - beta1) * grads["dW" + str(l+1)] 
+        v["db" + str(l+1)] = beta1 * v["db" + str(l+1)] + (1 - beta1) * grads["db" + str(l+1)] 
+        
+        # Compute bias-corrected first moment estimate. Inputs: "v, beta1, t". Output: "v_corrected".
+        v_corrected["dW" + str(l+1)] = v["dW" + str(l+1)] / (1 - beta1**t)
+        v_corrected["db" + str(l+1)] = v["db" + str(l+1)] / (1 - beta1**t)
+        
+        # Moving average of the squared gradients. Inputs: "s, grads, beta2". Output: "s".
+        
+        s["dW" + str(l+1)] = beta2 * s["dW" + str(l+1)] + (1 - beta2) * (grads["dW" + str(l+1)] ** 2)
+        s["db" + str(l+1)] = beta2 * s["db" + str(l+1)] + (1 - beta2) * (grads["db" + str(l+1)] ** 2)
+        
+        # Compute bias-corrected second raw moment estimate. Inputs: "s, beta2, t". Output: "s_corrected".
+        s_corrected["dW" + str(l+1)] = s["dW" + str(l+1)] / (1 - beta2 ** t)
+        s_corrected["db" + str(l+1)] = s["db" + str(l+1)] / (1 - beta2 ** t)
+        
+        # Update parameters. Inputs: "parameters, learning_rate, v_corrected, s_corrected, epsilon". Output: "parameters".
+        parameters["W" + str(l+1)] = parameters["W" + str(l+1)] - learning_rate * v_corrected["dW" + str(l+1)] / np.sqrt(s_corrected["dW" + str(l+1)] + epsilon)
+        parameters["b" + str(l+1)] = parameters["b" + str(l+1)] - learning_rate * v_corrected["db" + str(l+1)] / np.sqrt(s_corrected["db" + str(l+1)] + epsilon)
+        
+    return parameters, v, s
+
+def rnn_step_forward(parameters, a_prev, x):
     Waa, Wax, Wya, by, b = parameters['Waa'], parameters['Wax'], parameters['Wya'], parameters['by'], parameters['b']
     a_next = np.tanh(np.dot(Wax, x) + np.dot(Waa, a_prev) + b) # hidden state
     p_t = softmax(np.dot(Wya, a_next) + by) # unnormalized log probabilities for next chars # probabilities for next chars 
-    
     return a_next, p_t
 
 def rnn_step_backward(dy, gradients, parameters, x, a, a_prev):
-    
     gradients['dWya'] += np.dot(dy, a.T)
     gradients['dby'] += dy
     da = np.dot(parameters['Wya'].T, dy) + gradients['da_next'] # backprop into h
@@ -62,7 +145,6 @@ def rnn_step_backward(dy, gradients, parameters, x, a, a_prev):
     return gradients
 
 def update_parameters(parameters, gradients, lr):
-
     parameters['Wax'] += -lr * gradients['dWax']
     parameters['Waa'] += -lr * gradients['dWaa']
     parameters['Wya'] += -lr * gradients['dWya']
@@ -71,24 +153,19 @@ def update_parameters(parameters, gradients, lr):
     return parameters
 
 def rnn_forward(X, Y, a0, parameters, vocab_size = 71):
-    
     # Initialize x, a and y_hat as empty dictionaries
     x, a, y_hat = {}, {}, {}
-    
     a[-1] = np.copy(a0)
     
     # initialize your loss to 0
     loss = 0
     
     for t in range(len(X)):
-        
         # Set x[t] to be the one-hot vector representation of the t'th character in X.
         x[t] = np.zeros((vocab_size,1)) 
         x[t][X[t]] = 1
-        
         # Run one step forward of the RNN
         a[t], y_hat[t] = rnn_step_forward(parameters, a[t-1], x[t])
-        
         # Update the loss by substracting the cross-entropy term of this time-step from it.
         loss -= np.log(y_hat[t][Y[t],0])
         
